@@ -1,0 +1,40 @@
+# Stage 0 — LiteLLM proxy config (Docker deployment path).
+#
+# This is the "buy" path from the design doc: run the LiteLLM proxy image
+# directly. The FastAPI shim in control_plane/ is the "build" path that wraps
+# the same Router with our auth, budgets, and spend tracking.
+#
+#   docker run -p 4000:4000 -v $(pwd)/gateway/config.yaml:/app/config.yaml \
+#     -e OPENAI_API_KEY -e ANTHROPIC_API_KEY \
+#     ghcr.io/berriai/litellm:main-stable --config /app/config.yaml
+
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      rpm: 1000
+    model_info:
+      id: openai-4o-primary
+
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-latest
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      id: anthropic-sonnet
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 3
+  allowed_fails: 3
+  cooldown_time: 30
+
+litellm_settings:
+  # Cross-provider failover: if gpt-4o is unavailable, retry on claude-sonnet.
+  fallbacks:
+    - gpt-4o: ["claude-sonnet"]
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
