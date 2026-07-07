@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from .audit import AuditLog
 from .completer import Completer, LiteLLMCompleter
 from .config import Settings, default_model_list
 from .routes import admin, analytics, chat
@@ -17,13 +18,19 @@ from .usage import EventSink, InMemorySink
 
 
 def create_app(
-    *, store: KeyStore, completer: Completer, settings: Settings, sink: EventSink | None = None
+    *,
+    store: KeyStore,
+    completer: Completer,
+    settings: Settings,
+    sink: EventSink | None = None,
+    audit: AuditLog | None = None,
 ) -> FastAPI:
     app = FastAPI(title="OmniRoute", version="0.1.0")
     app.state.store = store
     app.state.completer = completer
     app.state.settings = settings
     app.state.sink = sink if sink is not None else InMemorySink()
+    app.state.audit = audit if audit is not None else AuditLog()
 
     app.include_router(chat.router)
     app.include_router(admin.router)

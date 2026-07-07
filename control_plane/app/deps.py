@@ -10,6 +10,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
+from .audit import AuditLog
 from .completer import Completer
 from .config import Settings
 from .store import KeyRecord, KeyStore
@@ -26,6 +27,10 @@ def get_completer(request: Request) -> Completer:
 
 def get_sink(request: Request) -> EventSink:
     return request.app.state.sink
+
+
+def get_audit(request: Request) -> AuditLog:
+    return request.app.state.audit
 
 
 def get_settings(request: Request) -> Settings:

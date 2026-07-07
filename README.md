@@ -7,7 +7,7 @@ automatic failover, per-key budgets, and spend tracking.
 - Design: [`doc/system-design.md`](doc/system-design.md)
 - Plan (TDD): [`doc/implementation-plan.md`](doc/implementation-plan.md)
 
-## What's implemented (Stages 0–3)
+## What's implemented (Stages 0–4)
 
 A FastAPI gateway shim with a clean, dependency-injected core. Every external
 dependency (completions, event sink, rate limiter) sits behind a small seam, so
@@ -33,6 +33,14 @@ network or provider keys.
 - `select_deployment` — usage-based / cost-based selection that skips cooled-down
   deployments and honors tpm headroom (`app/routing.py`).
 - Multi-region pool config: `gateway/config.multiregion.yaml`.
+
+**Stage 4 — enterprise**
+- `RBAC` — roles → permission matrix with `can` / `require` (`app/rbac.py`).
+- Markup/pricing + invoicing — per-org markup (0% default), per-model invoice
+  line items, golden-file-pinned rendering (`app/billing.py`).
+- Append-only, hash-chained **audit log** (`app/audit.py`); privileged actions
+  recorded; `GET /admin/audit` returns entries + chain verification.
+- **SSO/OIDC** login mapping verified claims → org-scoped session (`app/sso.py`).
 
 ## Develop
 

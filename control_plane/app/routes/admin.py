@@ -6,7 +6,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..deps import get_store, require_master_key
+from ..audit import AuditLog
+from ..deps import get_audit, get_store, require_master_key
 from ..schemas import CreateKeyRequest, KeyResponse, SpendResponse
 from ..store import KeyRecord, KeyStore
 
@@ -17,13 +18,29 @@ router = APIRouter(prefix="/admin", tags=["control-plane"])
 def create_key(
     body: CreateKeyRequest,
     store: Annotated[KeyStore, Depends(get_store)],
+    audit: Annotated[AuditLog, Depends(get_audit)],
     _: Annotated[None, Depends(require_master_key)],
 ) -> KeyResponse:
     record = store.create(
         max_budget=body.max_budget,
         models=tuple(body.models) if body.models is not None else None,
     )
+    audit.record(actor="master", action="create_key", target=record.key)
     return _to_key_response(record)
+
+
+@router.get("/audit")
+def list_audit(
+    audit: Annotated[AuditLog, Depends(get_audit)],
+    _: Annotated[None, Depends(require_master_key)],
+) -> dict[str, object]:
+    return {
+        "verified": audit.verify(),
+        "entries": [
+            {"seq": e.seq, "actor": e.actor, "action": e.action, "target": e.target}
+            for e in audit.entries()
+        ],
+    }
 
 
 @router.get("/keys/{key}/spend", response_model=SpendResponse)
