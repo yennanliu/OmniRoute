@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from .audit import AuditLog
+from .audit import AuditLog, InMemoryAuditLog
 from .completer import Completer, LiteLLMCompleter
 from .config import Settings, default_model_list
 from .routes import admin, analytics, chat
@@ -30,7 +30,7 @@ def create_app(
     app.state.completer = completer
     app.state.settings = settings
     app.state.sink = sink if sink is not None else InMemorySink()
-    app.state.audit = audit if audit is not None else AuditLog()
+    app.state.audit = audit if audit is not None else InMemoryAuditLog()
 
     app.include_router(chat.router)
     app.include_router(admin.router)
@@ -43,24 +43,34 @@ def create_app(
     return app
 
 
-def _build_store(settings: Settings) -> KeyStore:
-    """SQLite/Postgres if DATABASE_URL is set, else an in-memory store."""
+def _build_backends(
+    settings: Settings,
+) -> tuple[KeyStore, EventSink, AuditLog]:
+    """SQL-backed (SQLite/Postgres) if DATABASE_URL is set, else in-memory.
+
+    All three share one engine so a single URL configures the whole control plane.
+    """
     if settings.database_url:
+        from .audit_sql import SqlAuditLog
         from .db import make_engine
         from .store_sql import SqlKeyStore
+        from .usage_sql import SqlSink
 
-        return SqlKeyStore(make_engine(settings.database_url))
-    return InMemoryKeyStore()
+        engine = make_engine(settings.database_url)
+        return SqlKeyStore(engine), SqlSink(engine), SqlAuditLog(engine)
+    return InMemoryKeyStore(), InMemorySink(), InMemoryAuditLog()
 
 
 def default_app() -> FastAPI:
     """Production wiring: real settings + LiteLLM-backed completer."""
     settings = Settings()
+    store, sink, audit = _build_backends(settings)
     return create_app(
-        store=_build_store(settings),
+        store=store,
         completer=LiteLLMCompleter(model_list=default_model_list()),
         settings=settings,
-        sink=InMemorySink(),
+        sink=sink,
+        audit=audit,
     )
 
 

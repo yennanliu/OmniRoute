@@ -11,3 +11,6 @@ htmlcov/
 # Env / secrets
 .env
 *.env
+
+# Local SQLite dev databases
+*.db

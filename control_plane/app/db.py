@@ -7,7 +7,17 @@ small and dependency-light; migrations (Alembic) come with the Postgres rollout.
 
 from __future__ import annotations
 
-from sqlalchemy import JSON, Column, Engine, Float, MetaData, String, Table, create_engine
+from sqlalchemy import (
+    JSON,
+    Column,
+    Engine,
+    Float,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+)
 
 metadata = MetaData()
 
@@ -18,6 +28,29 @@ keys = Table(
     Column("max_budget", Float, nullable=True),
     Column("spend", Float, nullable=False, default=0.0),
     Column("models", JSON, nullable=True),  # list[str] | None
+)
+
+usage_events = Table(
+    "usage_events",
+    metadata,
+    Column("request_id", String, primary_key=True),  # idempotency key
+    Column("key", String, nullable=False),
+    Column("model", String, nullable=False),
+    Column("prompt_tokens", Integer, nullable=False),
+    Column("completion_tokens", Integer, nullable=False),
+    Column("cost", Float, nullable=False),
+    Column("status", String, nullable=False),
+)
+
+audit_log = Table(
+    "audit_log",
+    metadata,
+    Column("seq", Integer, primary_key=True),  # 0-based chain position
+    Column("actor", String, nullable=False),
+    Column("action", String, nullable=False),
+    Column("target", String, nullable=False),
+    Column("prev_hash", String, nullable=False),
+    Column("entry_hash", String, nullable=False),
 )
 
 

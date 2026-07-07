@@ -16,17 +16,27 @@ no network or provider keys.
 
 ### Storage
 
-The `KeyStore` seam has three interchangeable backends, chosen by
-`OMNIROUTE_DATABASE_URL`:
+The key store, usage sink, and audit log each sit behind a Protocol seam, and
+all three switch backend together based on `OMNIROUTE_DATABASE_URL`:
 
 | Setting | Backend | Use |
 |---|---|---|
-| unset | `InMemoryKeyStore` | tests, quick local runs |
-| `sqlite:///omniroute.db` | `SqlKeyStore` (SQLite) | **local dev** — a file, zero setup |
-| `postgresql+psycopg://…` | `SqlKeyStore` (Postgres) | production |
+| unset | in-memory | tests, quick local runs |
+| `sqlite:///omniroute.db` | SQLite | **local dev** — a file, zero setup |
+| `postgresql+psycopg://…` | Postgres | production |
 
-SQLite and Postgres share one SQLAlchemy Core schema, so local dev and prod
-differ only by the URL.
+SQLite and Postgres share one SQLAlchemy Core schema (`app/db.py`), so local dev
+and prod differ only by the URL.
+
+### Migrations (Alembic)
+
+The schema is managed by Alembic (`migrations/`). It reads the same
+`OMNIROUTE_DATABASE_URL`:
+
+```bash
+OMNIROUTE_DATABASE_URL=sqlite:///omniroute.db uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "describe change"   # after editing app/db.py
+```
 
 **Stage 0–1 — gateway + control plane**
 - `POST /v1/chat/completions` — OpenAI-compatible; routes via LiteLLM's `Router`.
