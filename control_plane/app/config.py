@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OMNIROUTE_", extra="ignore")
 
     master_key: str = "sk-omni-master-dev"  # admin key for provisioning; override in prod
+    # None -> in-memory store. Local dev: "sqlite:///omniroute.db".
+    # Prod: "postgresql+psycopg://user:pw@host/omniroute".
+    database_url: str | None = None
 
 
 def default_model_list() -> list[dict[str, Any]]:

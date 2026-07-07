@@ -1,8 +1,8 @@
-from app.store import KeyStore
+from app.store import InMemoryKeyStore
 
 
 def test_created_key_has_prefix_and_defaults():
-    store = KeyStore()
+    store = InMemoryKeyStore()
     rec = store.create()
     assert rec.key.startswith("sk-omni-")
     assert rec.max_budget is None
@@ -12,7 +12,7 @@ def test_created_key_has_prefix_and_defaults():
 
 
 def test_add_spend_accumulates_and_trips_budget():
-    store = KeyStore()
+    store = InMemoryKeyStore()
     store.create(max_budget=1.0, key="sk-omni-x")
     assert store.add_spend("sk-omni-x", 0.4) == 0.4
     assert not store.get("sk-omni-x").budget_exceeded
@@ -21,6 +21,6 @@ def test_add_spend_accumulates_and_trips_budget():
 
 
 def test_model_allow_list():
-    rec = KeyStore().create(models=("gpt-4o",))
+    rec = InMemoryKeyStore().create(models=("gpt-4o",))
     assert rec.allows("gpt-4o")
     assert not rec.allows("claude-sonnet")

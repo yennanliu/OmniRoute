@@ -13,7 +13,7 @@ from .audit import AuditLog
 from .completer import Completer, LiteLLMCompleter
 from .config import Settings, default_model_list
 from .routes import admin, analytics, chat
-from .store import KeyStore
+from .store import InMemoryKeyStore, KeyStore
 from .usage import EventSink, InMemorySink
 
 
@@ -43,12 +43,23 @@ def create_app(
     return app
 
 
+def _build_store(settings: Settings) -> KeyStore:
+    """SQLite/Postgres if DATABASE_URL is set, else an in-memory store."""
+    if settings.database_url:
+        from .db import make_engine
+        from .store_sql import SqlKeyStore
+
+        return SqlKeyStore(make_engine(settings.database_url))
+    return InMemoryKeyStore()
+
+
 def default_app() -> FastAPI:
     """Production wiring: real settings + LiteLLM-backed completer."""
+    settings = Settings()
     return create_app(
-        store=KeyStore(),
+        store=_build_store(settings),
         completer=LiteLLMCompleter(model_list=default_model_list()),
-        settings=Settings(),
+        settings=settings,
         sink=InMemorySink(),
     )
 

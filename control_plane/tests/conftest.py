@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.config import Settings
 from app.main import create_app
-from app.store import KeyStore
+from app.store import InMemoryKeyStore
 from app.usage import InMemorySink
 
 MASTER_KEY = "sk-omni-master-test"
@@ -52,8 +52,8 @@ class FakeCompleter:
 
 
 @pytest.fixture
-def store() -> KeyStore:
-    return KeyStore()
+def store() -> InMemoryKeyStore:
+    return InMemoryKeyStore()
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ def sink() -> InMemorySink:
 
 
 @pytest.fixture
-def app(store: KeyStore, completer: FakeCompleter, sink: InMemorySink):
+def app(store: InMemoryKeyStore, completer: FakeCompleter, sink: InMemorySink):
     return create_app(
         store=store, completer=completer, settings=Settings(master_key=MASTER_KEY), sink=sink
     )

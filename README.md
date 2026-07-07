@@ -10,9 +10,23 @@ automatic failover, per-key budgets, and spend tracking.
 ## What's implemented (Stages 0–4)
 
 A FastAPI gateway shim with a clean, dependency-injected core. Every external
-dependency (completions, event sink, rate limiter) sits behind a small seam, so
-tests use in-memory fakes — the suite is fast, deterministic, and needs no
-network or provider keys.
+dependency (completions, event sink, rate limiter, key store) sits behind a small
+seam, so tests use in-memory fakes — the suite is fast, deterministic, and needs
+no network or provider keys.
+
+### Storage
+
+The `KeyStore` seam has three interchangeable backends, chosen by
+`OMNIROUTE_DATABASE_URL`:
+
+| Setting | Backend | Use |
+|---|---|---|
+| unset | `InMemoryKeyStore` | tests, quick local runs |
+| `sqlite:///omniroute.db` | `SqlKeyStore` (SQLite) | **local dev** — a file, zero setup |
+| `postgresql+psycopg://…` | `SqlKeyStore` (Postgres) | production |
+
+SQLite and Postgres share one SQLAlchemy Core schema, so local dev and prod
+differ only by the URL.
 
 **Stage 0–1 — gateway + control plane**
 - `POST /v1/chat/completions` — OpenAI-compatible; routes via LiteLLM's `Router`.
@@ -56,6 +70,7 @@ uv run ruff check .          # lint
 ```bash
 export OPENAI_API_KEY=sk-...            # used by LiteLLM's Router
 export OMNIROUTE_MASTER_KEY=sk-omni-master-...
+export OMNIROUTE_DATABASE_URL=sqlite:///omniroute.db   # optional; omit for in-memory
 PYTHONPATH=control_plane uv run uvicorn app.main:app --reload
 
 # issue a key, then call the gateway

@@ -1,9 +1,8 @@
-"""In-memory key store.
+"""Virtual-key storage.
 
-Stage 1 uses this simple, thread-safe store so the vertical slice runs with no
-external dependencies. It hides behind a small surface (`create` / `get` /
-`add_spend`) so a Postgres-backed implementation can drop in later without
-touching callers.
+`KeyStore` is the seam (a Protocol). `InMemoryKeyStore` is the default — used by
+tests and by local runs without a database. `SqlKeyStore` (see `store_sql.py`)
+persists to SQLite locally or Postgres in prod via a single `DATABASE_URL`.
 """
 
 from __future__ import annotations
@@ -11,6 +10,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from threading import Lock
+from typing import Protocol
 
 
 @dataclass
@@ -30,7 +30,25 @@ class KeyRecord:
         return self.models is None or model in self.models
 
 
-class KeyStore:
+def new_key() -> str:
+    return f"sk-omni-{secrets.token_urlsafe(24)}"
+
+
+class KeyStore(Protocol):
+    def create(
+        self,
+        *,
+        max_budget: float | None = None,
+        models: tuple[str, ...] | None = None,
+        key: str | None = None,
+    ) -> KeyRecord: ...
+
+    def get(self, key: str) -> KeyRecord | None: ...
+
+    def add_spend(self, key: str, amount: float) -> float: ...
+
+
+class InMemoryKeyStore:
     def __init__(self) -> None:
         self._keys: dict[str, KeyRecord] = {}
         self._lock = Lock()
@@ -42,11 +60,7 @@ class KeyStore:
         models: tuple[str, ...] | None = None,
         key: str | None = None,
     ) -> KeyRecord:
-        record = KeyRecord(
-            key=key or f"sk-omni-{secrets.token_urlsafe(24)}",
-            max_budget=max_budget,
-            models=models,
-        )
+        record = KeyRecord(key=key or new_key(), max_budget=max_budget, models=models)
         with self._lock:
             self._keys[record.key] = record
         return record
