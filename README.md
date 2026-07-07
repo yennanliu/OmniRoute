@@ -7,18 +7,32 @@ automatic failover, per-key budgets, and spend tracking.
 - Design: [`doc/system-design.md`](doc/system-design.md)
 - Plan (TDD): [`doc/implementation-plan.md`](doc/implementation-plan.md)
 
-## What's implemented (Stage 0 + Stage 1 start)
+## What's implemented (Stages 0–3)
 
-A FastAPI gateway shim with a clean, dependency-injected core:
+A FastAPI gateway shim with a clean, dependency-injected core. Every external
+dependency (completions, event sink, rate limiter) sits behind a small seam, so
+tests use in-memory fakes — the suite is fast, deterministic, and needs no
+network or provider keys.
 
-- `POST /v1/chat/completions` — OpenAI-compatible; routes via LiteLLM's `Router`
-  (multi-deployment, failover) on the production path.
+**Stage 0–1 — gateway + control plane**
+- `POST /v1/chat/completions` — OpenAI-compatible; routes via LiteLLM's `Router`.
 - Virtual-key auth (`sk-omni-...`), per-key **budgets** and **model allow-lists**.
-- Per-key **spend tracking** (recorded after each call).
-- Control plane: `POST /admin/keys`, `GET /admin/keys/{key}/spend` (master-key auth).
+- Per-key **spend tracking**.
+- `POST /admin/keys`, `GET /admin/keys/{key}/spend` (master-key auth).
 
-The completion backend is a `Completer` seam, so tests use a fake — the suite is
-fast, deterministic, and needs no network or provider keys.
+**Stage 2 — analytics & scale**
+- Usage pipeline: every call emits a `UsageEvent` to an `EventSink`
+  (`InMemorySink` / `FirehoseSink` → Kinesis → S3), idempotent on request id.
+- `GET /admin/analytics/usage` — rollups by model and by key.
+- `RateLimiter` seam (in-memory / shared-Redis) for correct counting across
+  replicas; `load/locustfile.py` for the p95-overhead SLO.
+
+**Stage 3 — reserved capacity & smart routing**
+- `CapacityLedger` — committed vs. consumed per provider/region, ceiling guards,
+  reconciliation (`app/capacity.py`).
+- `select_deployment` — usage-based / cost-based selection that skips cooled-down
+  deployments and honors tpm headroom (`app/routing.py`).
+- Multi-region pool config: `gateway/config.multiregion.yaml`.
 
 ## Develop
 
@@ -54,8 +68,10 @@ image directly with that config.
 ## Layout
 
 ```
-control_plane/app/   FastAPI shim: routes, auth, store, pricing, completer seam
+control_plane/app/   routes, auth, store, pricing, completer/sink/ratelimit seams,
+                     analytics, capacity ledger, smart routing
 control_plane/tests/ unit + contract tests
-gateway/config.yaml  LiteLLM proxy config (Docker path)
+gateway/             LiteLLM proxy configs (single + multi-region)
+load/                locust load test
 doc/                 design + implementation-plan
 ```

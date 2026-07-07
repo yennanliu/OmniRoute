@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..completer import Completer
-from ..deps import get_completer, get_store, require_key
+from ..deps import get_completer, get_sink, get_store, require_key
 from ..pricing import cost_of
 from ..schemas import ChatCompletionRequest
 from ..store import KeyRecord, KeyStore
+from ..usage import EventSink, UsageEvent
 
 router = APIRouter(tags=["gateway"])
 
@@ -21,6 +23,7 @@ async def chat_completions(
     key: Annotated[KeyRecord, Depends(require_key)],
     completer: Annotated[Completer, Depends(get_completer)],
     store: Annotated[KeyStore, Depends(get_store)],
+    sink: Annotated[EventSink, Depends(get_sink)],
 ) -> dict[str, Any]:
     if key.budget_exceeded:
         raise HTTPException(
@@ -36,6 +39,17 @@ async def chat_completions(
         model=body.model, messages=body.messages, **body.passthrough_params()
     )
 
-    # Attribute spend to the key after a successful call.
-    store.add_spend(key.key, cost_of(body.model, response.get("usage", {}) or {}))
+    usage = response.get("usage", {}) or {}
+    cost = cost_of(body.model, usage)
+    # Attribute spend to the key and emit a usage event for analytics.
+    store.add_spend(key.key, cost)
+    sink.emit(
+        UsageEvent.from_response(
+            request_id=uuid.uuid4().hex,
+            key=key.key,
+            model=body.model,
+            cost=cost,
+            usage=usage,
+        )
+    )
     return response

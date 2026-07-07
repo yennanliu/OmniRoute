@@ -1,0 +1,54 @@
+# Stage 3 — multi-region reserved-capacity pools + smart routing.
+#
+# Several deployments share the `gpt-4o` model group across regions. `tpm`/`rpm`
+# reflect our *reserved* capacity per pool; usage-based routing spreads load to
+# the least-utilized healthy deployment and cools down failing ones. This is the
+# config counterpart to app/routing.py (selection logic) and app/capacity.py
+# (the committed-vs-consumed ledger).
+
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      tpm: 300000
+      rpm: 900
+    model_info:
+      id: openai-4o-us-east
+      region: us-east-1
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: azure/gpt-4o
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: "2024-08-01-preview"
+      tpm: 500000
+      rpm: 1000
+    model_info:
+      id: azure-4o-eu-west
+      region: eu-west-1
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0
+      aws_region_name: ap-southeast-1
+      tpm: 200000
+    model_info:
+      id: bedrock-sonnet-ap
+      region: ap-southeast-1
+
+router_settings:
+  routing_strategy: usage-based-routing-v2  # route to lowest-utilization pool
+  num_retries: 3
+  allowed_fails: 3
+  cooldown_time: 30
+  redis_host: os.environ/REDIS_HOST         # shared state across replicas
+  redis_port: os.environ/REDIS_PORT
+  redis_password: os.environ/REDIS_PASSWORD
+
+litellm_settings:
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -13,6 +13,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from .completer import Completer
 from .config import Settings
 from .store import KeyRecord, KeyStore
+from .usage import EventSink
 
 
 def get_store(request: Request) -> KeyStore:
@@ -21,6 +22,10 @@ def get_store(request: Request) -> KeyStore:
 
 def get_completer(request: Request) -> Completer:
     return request.app.state.completer
+
+
+def get_sink(request: Request) -> EventSink:
+    return request.app.state.sink
 
 
 def get_settings(request: Request) -> Settings:
