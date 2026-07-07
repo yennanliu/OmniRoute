@@ -233,14 +233,40 @@ Latency budget: gateway overhead target **< 30 ms p50** on top of upstream laten
 - **DNS/TLS:** Route 53 + ACM.
 - **WAF** on CloudFront/ALB for abuse protection.
 
-### 6.2 Scaling
+### 6.2 Deployment style: server vs. serverless (AWS-native)
+
+A recurring question: *do we still need a running Python server, or can this be pure AWS-native/serverless?* The answer differs by plane.
+
+**The gateway (hot path) must be a long-lived server.** It:
+
+- holds **streaming (SSE)** connections open token-by-token for seconds to minutes,
+- keeps **provider connection pools** and **router state** (cooldowns, latency/usage stats) warm in memory,
+- must add < 30 ms overhead per request.
+
+**Lambda is a poor fit for the gateway:** 15-minute cap, cold starts on a latency-critical path, awkward response streaming, and you pay for wall-clock time *while blocked waiting on slow upstream LLMs* — which gets expensive fast at scale. And there is **no AWS-native service that *is* a multi-provider LLM router** — Bedrock only fronts AWS-hosted models. Going "pure native" would collapse OmniRoute into a Bedrock-only product, i.e. a different, smaller product that loses the core value prop (200+ models, cross-provider failover). So the gateway stays a **persistent container (LiteLLM on ECS Fargate)**.
+
+**The control plane is the negotiable part.** Account/key/billing/dashboard APIs are low-QPS CRUD and *can* go serverless.
+
+| Concern | Server (container) | AWS-native / serverless alternative | Verdict |
+|---|---|---|---|
+| Multi-provider routing, failover, unified API | LiteLLM on Fargate | ❌ none (Bedrock = AWS models only) | **Server — mandatory** |
+| Edge auth / rate limit / abuse | shim logic | API Gateway usage plans + WAF + Cognito | Native OK at edge |
+| Control-plane CRUD (orgs, keys, billing) | FastAPI on Fargate | API Gateway + Lambda + DynamoDB | Either; see below |
+| Usage pipeline | callback code | Kinesis Firehose → S3 → Athena | **Native (already in design)** |
+| Scheduled jobs (invoicing, reconciliation) | worker process | EventBridge + Step Functions + Lambda | **Native — preferred** |
+
+**Recommendation for v1:** keep **both gateway and control plane as FastAPI/LiteLLM containers on Fargate** — one language, one deploy model, fewer moving parts. Use AWS-native serverless where it's already the obvious fit: the **usage pipeline** (Firehose/S3/Athena) and **scheduled/async jobs** (EventBridge + Step Functions + Lambda). Peel the control plane onto Lambda + DynamoDB *later* only if the idle cost of a second Fargate service actually justifies splitting the stack across two runtimes.
+
+**Bottom line:** the gateway is irreducibly a Python server; the rest is a hybrid — container core + serverless glue.
+
+### 6.3 Scaling
 
 - Gateway is **stateless** → scale horizontally on RPS/CPU; Redis holds shared rate-limit/router state so counters are correct across tasks.
 - Aurora read replica for billing/dashboard queries.
 - Redis cluster mode for >1000 RPS (LiteLLM recommends Redis at that scale).
 - Provider concurrency capped by reserved capacity, not our fleet size — autoscaling protects against our own overload, capacity ledger protects providers.
 
-### 6.3 IaC & CI/CD
+### 6.4 IaC & CI/CD
 
 - **Terraform** for all AWS infra (VPC, ECS, RDS, ElastiCache, IAM, Secrets, CloudFront). LiteLLM publishes Terraform modules we can reference.
 - **Docker** images: gateway pins a specific `ghcr.io/berriai/litellm` tag + our `config.yaml`; control plane is our own image built with **uv**.
